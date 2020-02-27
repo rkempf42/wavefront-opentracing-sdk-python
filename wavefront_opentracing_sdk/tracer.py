@@ -11,6 +11,7 @@ import uuid
 
 import opentracing
 import opentracing.scope_managers
+from opentracing.tags import SPAN_KIND
 
 from wavefront_pyformance import tagged_registry
 from wavefront_pyformance import wavefront_histogram
@@ -72,9 +73,9 @@ class WavefrontTracer(opentracing.Tracer):
                                        constants.CLUSTER_TAG_KEY,
                                        constants.SHARD_TAG_KEY}
         self.report_frequency_millis = report_frequency_millis
-        self.red_metrics_custom_tag_keys = None
+        self.red_metrics_custom_tag_keys = {SPAN_KIND}
         if red_metrics_custom_tag_keys:
-            self.red_metrics_custom_tag_keys = set(red_metrics_custom_tag_keys)
+            self.red_metrics_custom_tag_keys.update(red_metrics_custom_tag_keys)
         wf_span_reporter = self.get_wavefront_span_reporter(reporter)
         if wf_span_reporter is not None:
             self.wf_internal_reporter, self.wf_derived_reporter, self. \
@@ -311,18 +312,18 @@ class WavefrontTracer(opentracing.Tracer):
         # names can have spaces and other invalid metric name characters.
         point_tags = {self.OPERATION_NAME_TAG: span.get_operation_name()}
         span_tags = span.get_tags_as_map()
-        custom_tag_match = False
 
         if self.red_metrics_custom_tag_keys:
             for key in self.red_metrics_custom_tag_keys:
                 if key in span_tags:
-                    custom_tag_match = True
                     point_tags.update({key: span_tags.get(key)[0]})
+        # Set default value of span.kind tag.
+        point_tags.setdefault(SPAN_KIND, constants.NULL_TAG_VAL)
         for key in self.single_valued_tag_keys:
             if key in span_tags:
                 point_tags.update({key: span_tags.get(key)[0]})
 
-        if custom_tag_match and self.heartbeater_service:
+        if self.heartbeater_service:
             self.heartbeater_service.report_custom_tags(point_tags)
 
         application_service_prefix = (
